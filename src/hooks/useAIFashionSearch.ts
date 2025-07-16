@@ -59,7 +59,14 @@ export const useAIFashionSearch = () => {
         error: errorMessage,
         isLoading: false,
       }));
-      toast.error('Failed to initialize AI session');
+      
+      // Show user-friendly error message
+      if (errorMessage.includes('Network error')) {
+        toast.error('Connection issue. Using offline mode.');
+      } else {
+        toast.error('AI session failed. Using offline mode.');
+      }
+      
       throw error;
     }
   }, [searchState.sessionId]);
@@ -145,7 +152,12 @@ export const useAIFashionSearch = () => {
         isLoading: false,
       }));
 
-      toast.error('Search failed. Please try again.', { id: 'ai-search' });
+      // Show user-friendly error messages
+      if (errorMessage.includes('Network error')) {
+        toast.error('Connection issue. Try again or use offline mode.', { id: 'ai-search' });
+      } else {
+        toast.error('AI search failed. Falling back to basic search.', { id: 'ai-search' });
+      }
       toast.dismiss('product-search');
       
       throw error;

@@ -57,7 +57,7 @@ export interface GoogleShoppingResponse {
 }
 
 // Base API configuration
-const API_BASE_URL = 'https://api.example.com'; // Replace with actual API URL
+const API_BASE_URL = 'https://agent-service-2wpf.onrender.com';
 
 class ApiService {
   private baseUrl: string;
@@ -73,16 +73,23 @@ class ApiService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
+        mode: 'cors',
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create conversation: ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to create conversation: ${response.status} ${errorText}`);
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error creating conversation:', error);
+      // Re-throw with more context
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error('Network error: Unable to connect to AI service. Please check your internet connection.');
+      }
       throw error;
     }
   }
@@ -99,16 +106,22 @@ class ApiService {
         body: formData,
         headers: {
           'Session-ID': sessionId,
+          'Accept': 'application/json',
         },
+        mode: 'cors',
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to send message: ${response.status} ${errorText}`);
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error sending message:', error);
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error('Network error: Unable to send message to AI service. Please try again.');
+      }
       throw error;
     }
   }
@@ -140,17 +153,23 @@ class ApiService {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
+          mode: 'cors',
         }
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to search Google Shopping: ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to search Google Shopping: ${response.status} ${errorText}`);
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error searching Google Shopping:', error);
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error('Network error: Unable to search products. Please check your connection.');
+      }
       throw error;
     }
   }
