@@ -2,7 +2,7 @@ import { createClient } from '@blinkdotnew/sdk'
 
 export const blink = createClient({
   projectId: 'ai-fashion-shopper-india-k036y4st',
-  authRequired: true
+  authRequired: false
 })
 
 // API configuration for external services

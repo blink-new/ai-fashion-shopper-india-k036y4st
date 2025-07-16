@@ -116,8 +116,8 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
-  const [user, setUser] = useState(null)
-  const [isAuthLoading, setIsAuthLoading] = useState(true)
+  const [user, setUser] = useState({ id: 'guest_user', email: 'guest@example.com' })
+  const [isAuthLoading, setIsAuthLoading] = useState(false)
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([])
   
   // Use the AI Fashion Search hook
@@ -129,14 +129,7 @@ function App() {
     initializeSession 
   } = useAIFashionSearch()
 
-  // Handle authentication state
-  useEffect(() => {
-    const unsubscribe = blink.auth.onAuthStateChanged((state) => {
-      setUser(state.user)
-      setIsAuthLoading(state.isLoading)
-    })
-    return unsubscribe
-  }, [])
+  // Authentication is disabled - using guest mode
 
   // Initialize session when search bar is clicked
   const handleSearchBarClick = async () => {
@@ -262,34 +255,7 @@ function App() {
 
 
 
-  // Show loading screen while auth is initializing
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading AI Fashion...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Show sign-in prompt if not authenticated
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto px-4">
-          <h1 className="text-2xl font-bold text-primary mb-4">AI Fashion Shopper</h1>
-          <p className="text-muted-foreground mb-6">
-            Discover fashion with AI-powered semantic search in Hindi and English
-          </p>
-          <Button onClick={() => blink.auth.login()} className="w-full">
-            Sign In to Continue
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  // Authentication is disabled - proceed directly to main app
 
   return (
     <div className="min-h-screen bg-background">
