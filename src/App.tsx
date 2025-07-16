@@ -137,6 +137,7 @@ function App() {
       await initializeSession()
     } catch (error) {
       console.error('Failed to initialize session:', error)
+      // Session initialization now has fallback, so this won't throw
     }
   }
 
@@ -211,7 +212,7 @@ function App() {
         }, 500)
       } catch (error) {
         console.error('Failed to initialize session after voice input:', error)
-        // Still proceed with search
+        // Session initialization now has fallback, still proceed with search
         setTimeout(() => {
           handleSearch()
         }, 500)

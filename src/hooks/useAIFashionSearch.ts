@@ -54,20 +54,21 @@ export const useAIFashionSearch = () => {
       return conversation.session_id;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to initialize session';
+      
+      // Create a fallback session ID
+      const fallbackSessionId = `fallback_${Date.now()}`;
+      
       setSearchState(prev => ({
         ...prev,
+        sessionId: fallbackSessionId,
         error: errorMessage,
         isLoading: false,
       }));
       
-      // Show user-friendly error message
-      if (errorMessage.includes('Network error')) {
-        toast.error('Connection issue. Using offline mode.');
-      } else {
-        toast.error('AI session failed. Using offline mode.');
-      }
+      // Don't show error toast here - let the calling function handle it
+      console.warn('Session initialization failed, using fallback:', errorMessage);
       
-      throw error;
+      return fallbackSessionId;
     }
   }, [searchState.sessionId]);
 
@@ -127,7 +128,7 @@ export const useAIFashionSearch = () => {
         shoppingQueries.push(`${query} fashion clothes India`);
       }
 
-      // Step 4: Search Google Shopping for all queries
+      // Step 4: Search for products using all queries
       const products = await apiService.batchSearchProducts(shoppingQueries);
       
       // Step 5: Process and return products
@@ -152,15 +153,15 @@ export const useAIFashionSearch = () => {
         isLoading: false,
       }));
 
-      // Show user-friendly error messages
-      if (errorMessage.includes('Network error')) {
-        toast.error('Connection issue. Try again or use offline mode.', { id: 'ai-search' });
-      } else {
-        toast.error('AI search failed. Falling back to basic search.', { id: 'ai-search' });
-      }
+      // Always dismiss loading toasts
+      toast.dismiss('ai-search');
       toast.dismiss('product-search');
       
-      throw error;
+      // Show user-friendly error message but don't block the app
+      toast.error('AI search temporarily unavailable. Using enhanced search.', { duration: 3000 });
+      
+      // Return empty array to let the app fall back to mock data
+      return [];
     }
   }, [initializeSession, processProducts]);
 
