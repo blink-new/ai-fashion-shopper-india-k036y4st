@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, Mic, Heart, ShoppingBag, User, Filter, Star, MapPin } from 'lucide-react'
+import { Search, Mic, Heart, ShoppingBag, User, Filter, Star, MapPin, Sparkles, ExternalLink } from 'lucide-react'
 import { Button } from './components/ui/button'
 import { Input } from './components/ui/input'
 import { Card, CardContent } from './components/ui/card'
 import { Badge } from './components/ui/badge'
-import { API_BASE_URL, DUMMY_USER_ID } from './blink/client'
+import { blink } from './blink/client'
+import { useAIFashionSearch, ProcessedProduct } from './hooks/useAIFashionSearch'
 import toast from 'react-hot-toast'
 
 interface Product {
@@ -111,65 +112,78 @@ const categories = [
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [products, setProducts] = useState<Product[]>(mockProducts)
+  const [products, setProducts] = useState<(Product | ProcessedProduct)[]>(mockProducts)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
-  const [isSearching, setIsSearching] = useState(false)
+  const [user, setUser] = useState(null)
+  const [isAuthLoading, setIsAuthLoading] = useState(true)
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([])
+  
+  // Use the AI Fashion Search hook
+  const { 
+    searchState, 
+    searchFashion, 
+    getFollowUpSuggestions, 
+    getStyleSuggestion,
+    initializeSession 
+  } = useAIFashionSearch()
+
+  // Handle authentication state
+  useEffect(() => {
+    const unsubscribe = blink.auth.onAuthStateChanged((state) => {
+      setUser(state.user)
+      setIsAuthLoading(state.isLoading)
+    })
+    return unsubscribe
+  }, [])
+
+  // Initialize session when search bar is clicked
+  const handleSearchBarClick = async () => {
+    try {
+      await initializeSession()
+    } catch (error) {
+      console.error('Failed to initialize session:', error)
+    }
+  }
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return
     
-    setIsSearching(true)
-    toast.loading('Searching for fashion items...', { id: 'search' })
-    
     try {
-      const response = await fetch(`${API_BASE_URL}/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-          user_id: DUMMY_USER_ID
-        })
-      })
+      // Use the AI Fashion Search hook
+      const aiProducts = await searchFashion(searchQuery)
       
-      if (!response.ok) {
-        throw new Error('Search failed')
+      if (aiProducts.length > 0) {
+        setProducts(aiProducts)
+        setFollowUpSuggestions(getFollowUpSuggestions())
+      } else {
+        // Fallback to enhanced mock search
+        const filteredProducts = mockProducts.filter(product => {
+          const query = searchQuery.toLowerCase()
+          return product.name.toLowerCase().includes(query) ||
+                 product.category.toLowerCase().includes(query) ||
+                 product.brand.toLowerCase().includes(query) ||
+                 // Add semantic matching for Indian fashion terms
+                 (query.includes('शादी') || query.includes('wedding')) && product.category === 'Lehengas' ||
+                 (query.includes('office') || query.includes('formal')) && (product.category === 'Kurtas' || product.category === 'Blazers') ||
+                 (query.includes('casual')) && (product.category === 'Jackets' || product.category === 'Kurtas')
+        })
+        
+        setProducts(filteredProducts.length > 0 ? filteredProducts : mockProducts)
+        toast.success(`Found ${filteredProducts.length || mockProducts.length} items (fallback mode)`)
       }
       
-      const data = await response.json()
-      
-      // Transform API response to match our Product interface
-      const searchResults = data.results?.map((item: any, index: number) => ({
-        id: `search_${index}`,
-        name: item.title || item.name || 'Fashion Item',
-        price: item.price || Math.floor(Math.random() * 3000) + 500,
-        originalPrice: item.original_price,
-        image: item.image || `https://images.unsplash.com/photo-${1610030469983 + index}?w=400&h=600&fit=crop`,
-        rating: item.rating || (4 + Math.random()),
-        reviews: item.reviews || Math.floor(Math.random() * 200) + 50,
-        brand: item.brand || 'Fashion Brand',
-        category: item.category || 'Fashion',
-        location: item.location || 'India',
-        discount: item.discount
-      })) || []
-      
-      setProducts(searchResults.length > 0 ? searchResults : mockProducts)
-      toast.success(`Found ${searchResults.length || mockProducts.length} items`, { id: 'search' })
     } catch (error) {
-      console.error('Search error:', error)
-      // Fallback to mock search
+      console.error('AI Search error:', error)
+      // Final fallback to simple mock search
       const filteredProducts = mockProducts.filter(product => 
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.brand.toLowerCase().includes(searchQuery.toLowerCase())
       )
       setProducts(filteredProducts)
-      toast.success(`Found ${filteredProducts.length} items (offline mode)`, { id: 'search' })
-    } finally {
-      setIsSearching(false)
+      toast.success(`Found ${filteredProducts.length} items (offline mode)`)
     }
   }
 
@@ -191,15 +205,24 @@ function App() {
       toast.loading('Listening... Speak now!', { id: 'voice' })
     }
 
-    recognition.onresult = (event) => {
+    recognition.onresult = async (event) => {
       const transcript = event.results[0][0].transcript
       setSearchQuery(transcript)
       toast.success(`Heard: "${transcript}"`, { id: 'voice' })
       
-      // Auto-search after voice input
-      setTimeout(() => {
-        handleSearch()
-      }, 500)
+      // Initialize session and auto-search after voice input
+      try {
+        await initializeSession()
+        setTimeout(() => {
+          handleSearch()
+        }, 500)
+      } catch (error) {
+        console.error('Failed to initialize session after voice input:', error)
+        // Still proceed with search
+        setTimeout(() => {
+          handleSearch()
+        }, 500)
+      }
     }
 
     recognition.onerror = () => {
@@ -239,6 +262,35 @@ function App() {
 
 
 
+  // Show loading screen while auth is initializing
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading AI Fashion...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show sign-in prompt if not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-4">
+          <h1 className="text-2xl font-bold text-primary mb-4">AI Fashion Shopper</h1>
+          <p className="text-muted-foreground mb-6">
+            Discover fashion with AI-powered semantic search in Hindi and English
+          </p>
+          <Button onClick={() => blink.auth.login()} className="w-full">
+            Sign In to Continue
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -269,17 +321,23 @@ function App() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                onClick={handleSearchBarClick}
                 className="pl-10 pr-4 py-3 text-base"
               />
+              {searchState.sessionId && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                </div>
+              )}
             </div>
             <Button
               onClick={handleSearch}
               variant="default"
               size="icon"
               className="shrink-0 h-12 w-12"
-              disabled={isSearching}
+              disabled={searchState.isLoading}
             >
-              <Search className={`h-5 w-5 ${isSearching ? 'animate-spin' : ''}`} />
+              <Search className={`h-5 w-5 ${searchState.isLoading ? 'animate-spin' : ''}`} />
             </Button>
             <Button
               onClick={handleVoiceSearch}
@@ -291,6 +349,51 @@ function App() {
             </Button>
           </div>
         </div>
+
+        {/* AI Style Suggestions */}
+        {getStyleSuggestion() && (
+          <div className="mb-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h3 className="font-medium text-primary">AI Style Suggestion</h3>
+            </div>
+            <h4 className="font-semibold mb-1">{getStyleSuggestion()?.title}</h4>
+            <p className="text-sm text-muted-foreground mb-3">{getStyleSuggestion()?.description}</p>
+            
+            {getStyleSuggestion()?.items && (
+              <div className="space-y-2">
+                {getStyleSuggestion()!.items.map((item, index) => (
+                  <div key={index} className="text-xs bg-background/50 p-2 rounded">
+                    <span className="font-medium">{item.type}</span> - {item.color} {item.material} in {item.fit} fit, {item.style} style
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Follow-up Suggestions */}
+        {followUpSuggestions.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-medium mb-2 text-muted-foreground">Try these suggestions:</h3>
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {followUpSuggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery(suggestion)
+                    handleSearch()
+                  }}
+                  className="shrink-0 text-xs"
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Categories */}
         <div className="mb-6">
@@ -350,18 +453,37 @@ function App() {
                     }`}
                   />
                 </Button>
+                {/* External link for AI-found products */}
+                {'productLink' in product && product.productLink && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute bottom-2 right-2 bg-white/80 hover:bg-white"
+                    onClick={() => window.open(product.productLink, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4 text-gray-600" />
+                  </Button>
+                )}
               </div>
               <CardContent className="p-3">
                 <div className="mb-2">
                   <h3 className="font-medium text-sm line-clamp-2 mb-1">
                     {product.name}
                   </h3>
-                  <p className="text-xs text-muted-foreground">{product.brand}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{product.brand}</p>
+                    {'productLink' in product && product.productLink && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Sparkles className="h-2 w-2 mr-1" />
+                        AI Found
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="flex items-center gap-1 mb-2">
                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                  <span className="text-xs font-medium">{product.rating}</span>
+                  <span className="text-xs font-medium">{product.rating.toFixed(1)}</span>
                   <span className="text-xs text-muted-foreground">({product.reviews})</span>
                 </div>
 
@@ -379,6 +501,16 @@ function App() {
                       </span>
                     )}
                   </div>
+                  {'productLink' in product && product.productLink && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-6"
+                      onClick={() => window.open(product.productLink, '_blank')}
+                    >
+                      View
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
